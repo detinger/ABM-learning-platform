@@ -59,7 +59,7 @@ const PopulationChart: React.FC<Props> = ({ data, metrics }) => {
           {metrics.map((m) => (
             <Area
               key={m.key}
-              type="monotone"
+              type="linear"
               dataKey={m.key}
               name={m.label}
               stroke={m.color}

@@ -10,19 +10,25 @@ import random
 
 
 class Sheep(Agent):
-    def __init__(self, model, energy_gain=4, reproduce_threshold=8):
+    def __init__(self, model, energy_gain=4, reproduce_threshold=8, energy=None):
         super().__init__(model)
-        self.energy = random.randint(1, 2 * energy_gain)
+        self.energy = random.randint(1, 2 * energy_gain) if energy is None else energy
         self.energy_gain = energy_gain
         self.reproduce_threshold = reproduce_threshold
 
     def step(self):
         self._move()
-        self._eat_grass()
-        self._reproduce()
         self.energy -= 1
+        ate_grass = self._eat_grass()
         if self.energy <= 0:
-            self.remove()
+            self._remove_from_world()
+            return
+        self._reproduce(ate_grass)
+
+    def _remove_from_world(self):
+        if self.pos is not None:
+            self.model.grid.remove_agent(self)
+        super().remove()
 
     def _move(self):
         neighbors = self.model.grid.get_neighborhood(self.pos, moore=True, include_center=False)
@@ -34,29 +40,43 @@ class Sheep(Agent):
                 self.energy += self.energy_gain
                 obj.fully_grown = False
                 obj.countdown = obj.regrowth_time
-                break
+                return True
+        return False
 
-    def _reproduce(self):
-        if self.energy >= self.reproduce_threshold:
-            self.energy //= 2
-            offspring = Sheep(self.model, self.energy_gain, self.reproduce_threshold)
+    def _reproduce(self, ate_food):
+        reproduce_chance = 1 / max(1, self.reproduce_threshold)
+        if ate_food and self.energy >= self.reproduce_threshold and random.random() < reproduce_chance:
+            offspring_energy = self.energy // 2
+            self.energy -= offspring_energy
+            offspring = Sheep(
+                self.model,
+                self.energy_gain,
+                self.reproduce_threshold,
+                energy=offspring_energy,
+            )
             self.model.grid.place_agent(offspring, self.pos)
 
 
 class Wolf(Agent):
-    def __init__(self, model, energy_gain=20, reproduce_threshold=16):
+    def __init__(self, model, energy_gain=20, reproduce_threshold=16, energy=None):
         super().__init__(model)
-        self.energy = random.randint(1, 2 * energy_gain)
+        self.energy = random.randint(1, 2 * energy_gain) if energy is None else energy
         self.energy_gain = energy_gain
         self.reproduce_threshold = reproduce_threshold
 
     def step(self):
         self._move()
-        self._eat_sheep()
-        self._reproduce()
         self.energy -= 1
+        ate_sheep = self._eat_sheep()
         if self.energy <= 0:
-            self.remove()
+            self._remove_from_world()
+            return
+        self._reproduce(ate_sheep)
+
+    def _remove_from_world(self):
+        if self.pos is not None:
+            self.model.grid.remove_agent(self)
+        super().remove()
 
     def _move(self):
         neighbors = self.model.grid.get_neighborhood(self.pos, moore=True, include_center=False)
@@ -71,12 +91,21 @@ class Wolf(Agent):
         sheep = [a for a in self.model.grid.get_cell_list_contents([self.pos]) if isinstance(a, Sheep)]
         if sheep:
             self.energy += self.energy_gain
-            random.choice(sheep).remove()
+            random.choice(sheep)._remove_from_world()
+            return True
+        return False
 
-    def _reproduce(self):
-        if self.energy >= self.reproduce_threshold:
-            self.energy //= 2
-            offspring = Wolf(self.model, self.energy_gain, self.reproduce_threshold)
+    def _reproduce(self, ate_food):
+        reproduce_chance = 1 / max(1, self.reproduce_threshold)
+        if ate_food and self.energy >= self.reproduce_threshold and random.random() < reproduce_chance:
+            offspring_energy = self.energy // 2
+            self.energy -= offspring_energy
+            offspring = Wolf(
+                self.model,
+                self.energy_gain,
+                self.reproduce_threshold,
+                energy=offspring_energy,
+            )
             self.model.grid.place_agent(offspring, self.pos)
 
 
@@ -101,8 +130,8 @@ class PredatorPreyModel(Model):
     """
     MODEL_TYPE = "predator_prey"
 
-    def __init__(self, width=20, height=20, initial_sheep=100, initial_wolves=50,
-                 sheep_reproduce_threshold=8, wolf_reproduce_threshold=16,
+    def __init__(self, width=20, height=20, initial_sheep=100, initial_wolves=20,
+                 sheep_reproduce_threshold=6, wolf_reproduce_threshold=24,
                  sheep_gain_from_food=4, wolf_gain_from_food=20, grass_regrowth_time=30):
         super().__init__()
         self.width = width
@@ -136,14 +165,39 @@ class PredatorPreyModel(Model):
             pos = (random.randrange(width), random.randrange(height))
             self.grid.place_agent(Wolf(self, wolf_gain_from_food, wolf_reproduce_threshold), pos)
 
-        self.running = True
+        self.running = initial_sheep > 0 or initial_wolves > 0
         self.datacollector.collect(self)
 
+    def _shuffled_agents(self, agent_type):
+        agents = list(self.agents_by_type.get(agent_type, []))
+        random.shuffle(agents)
+        return agents
+
+    def _species_survive(self):
+        sheep_alive = any(isinstance(a, Sheep) for a in self.agents)
+        wolves_alive = any(isinstance(a, Wolf) for a in self.agents)
+        return sheep_alive, wolves_alive
+
     def step(self):
-        self.agents.shuffle_do("step")
+        if not self.running:
+            return
+
+        for sheep in self._shuffled_agents(Sheep):
+            if sheep in self.agents:
+                sheep.step()
+
+        for wolf in self._shuffled_agents(Wolf):
+            if wolf not in self.agents:
+                continue
+            wolf.step()
+
+        for grass in self._shuffled_agents(GrassPatch):
+            if grass in self.agents:
+                grass.step()
+
         self.datacollector.collect(self)
-        if (sum(1 for a in self.agents if isinstance(a, Sheep)) == 0 or
-                sum(1 for a in self.agents if isinstance(a, Wolf)) == 0):
+        sheep_alive, wolves_alive = self._species_survive()
+        if not sheep_alive and not wolves_alive:
             self.running = False
 
     def get_api_state(self):

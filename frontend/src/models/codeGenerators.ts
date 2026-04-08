@@ -42,9 +42,9 @@ class GrassPatch(mesa.Agent):
 
 class Sheep(mesa.Agent):
     def __init__(self, model, energy_gain=${p.sheep_gain_from_food},
-                 reproduce_threshold=${p.sheep_reproduce_threshold}):
+                 reproduce_threshold=${p.sheep_reproduce_threshold}, energy=None):
         super().__init__(model)
-        self.energy = random.randint(1, 2 * energy_gain)
+        self.energy = random.randint(1, 2 * energy_gain) if energy is None else energy
         self.energy_gain = energy_gain
         self.reproduce_threshold = reproduce_threshold
 
@@ -52,29 +52,38 @@ class Sheep(mesa.Agent):
         # Move to random neighbor
         neighbors = self.model.grid.get_neighborhood(self.pos, moore=True, include_center=False)
         self.model.grid.move_agent(self, random.choice(neighbors))
+        # Metabolize before feeding/reproduction
+        self.energy -= 1
+        ate_grass = False
         # Eat grass
         for obj in self.model.grid.get_cell_list_contents([self.pos]):
             if isinstance(obj, GrassPatch) and obj.fully_grown:
                 self.energy += self.energy_gain
                 obj.fully_grown = False
                 obj.countdown = obj.regrowth_time
+                ate_grass = True
                 break
-        # Reproduce
-        if self.energy >= self.reproduce_threshold:
-            self.energy //= 2
-            self.model.grid.place_agent(
-                Sheep(self.model, self.energy_gain, self.reproduce_threshold), self.pos)
-        # Metabolize
-        self.energy -= 1
         if self.energy <= 0:
-            self.remove()
+            self._remove_from_world()
+            return
+        # Reproduce stochastically once the sheep has enough energy
+        if ate_grass and self.energy >= self.reproduce_threshold and random.random() < 1 / max(1, self.reproduce_threshold):
+            offspring_energy = self.energy // 2
+            self.energy -= offspring_energy
+            self.model.grid.place_agent(
+                Sheep(self.model, self.energy_gain, self.reproduce_threshold, energy=offspring_energy), self.pos)
+
+    def _remove_from_world(self):
+        if self.pos is not None:
+            self.model.grid.remove_agent(self)
+        super().remove()
 
 
 class Wolf(mesa.Agent):
     def __init__(self, model, energy_gain=${p.wolf_gain_from_food},
-                 reproduce_threshold=${p.wolf_reproduce_threshold}):
+                 reproduce_threshold=${p.wolf_reproduce_threshold}, energy=None):
         super().__init__(model)
-        self.energy = random.randint(1, 2 * energy_gain)
+        self.energy = random.randint(1, 2 * energy_gain) if energy is None else energy
         self.energy_gain = energy_gain
         self.reproduce_threshold = reproduce_threshold
 
@@ -85,21 +94,30 @@ class Wolf(mesa.Agent):
                      if any(isinstance(a, Sheep)
                             for a in self.model.grid.get_cell_list_contents([p]))]
         self.model.grid.move_agent(self, random.choice(sheep_pos if sheep_pos else neighbors))
+        # Metabolize before hunting/reproduction
+        self.energy -= 1
+        ate_sheep = False
         # Hunt
         prey = [a for a in self.model.grid.get_cell_list_contents([self.pos])
                 if isinstance(a, Sheep)]
         if prey:
             self.energy += self.energy_gain
-            random.choice(prey).remove()
-        # Reproduce
-        if self.energy >= self.reproduce_threshold:
-            self.energy //= 2
-            self.model.grid.place_agent(
-                Wolf(self.model, self.energy_gain, self.reproduce_threshold), self.pos)
-        # Metabolize
-        self.energy -= 1
+            random.choice(prey)._remove_from_world()
+            ate_sheep = True
         if self.energy <= 0:
-            self.remove()
+            self._remove_from_world()
+            return
+        # Reproduce stochastically once the wolf has enough energy
+        if ate_sheep and self.energy >= self.reproduce_threshold and random.random() < 1 / max(1, self.reproduce_threshold):
+            offspring_energy = self.energy // 2
+            self.energy -= offspring_energy
+            self.model.grid.place_agent(
+                Wolf(self.model, self.energy_gain, self.reproduce_threshold, energy=offspring_energy), self.pos)
+
+    def _remove_from_world(self):
+        if self.pos is not None:
+            self.model.grid.remove_agent(self)
+        super().remove()
 
 
 # %% 4 — Model
@@ -131,14 +149,39 @@ class PredatorPreyModel(mesa.Model):
             self.grid.place_agent(
                 Wolf(self, wolf_gain_from_food, wolf_reproduce_threshold),
                 (random.randrange(width), random.randrange(height)))
-        self.running = True
+        self.running = initial_sheep > 0 or initial_wolves > 0
         self.datacollector.collect(self)
 
+    def _shuffled_agents(self, agent_type):
+        agents = list(self.agents_by_type.get(agent_type, []))
+        random.shuffle(agents)
+        return agents
+
+    def _species_survive(self):
+        sheep_alive = any(isinstance(a, Sheep) for a in self.agents)
+        wolves_alive = any(isinstance(a, Wolf) for a in self.agents)
+        return sheep_alive, wolves_alive
+
     def step(self):
-        self.agents.shuffle_do("step")
+        if not self.running:
+            return
+
+        for sheep in self._shuffled_agents(Sheep):
+            if sheep in self.agents:
+                sheep.step()
+
+        for wolf in self._shuffled_agents(Wolf):
+            if wolf not in self.agents:
+                continue
+            wolf.step()
+
+        for grass in self._shuffled_agents(GrassPatch):
+            if grass in self.agents:
+                grass.step()
+
         self.datacollector.collect(self)
-        if (sum(1 for a in self.agents if isinstance(a, Sheep)) == 0 or
-                sum(1 for a in self.agents if isinstance(a, Wolf)) == 0):
+        sheep_alive, wolves_alive = self._species_survive()
+        if not sheep_alive and not wolves_alive:
             self.running = False
 
 

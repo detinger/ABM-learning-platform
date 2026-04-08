@@ -158,9 +158,9 @@ WS ws://localhost:8000/ws/simulation/{id}
 |---|---|---|
 | width / height | 20 | Grid dimensions |
 | initial_sheep | 100 | Starting sheep count |
-| initial_wolves | 50 | Starting wolf count |
-| sheep_reproduce_threshold | 8 | Energy needed to reproduce |
-| wolf_reproduce_threshold | 16 | Energy needed to reproduce |
+| initial_wolves | 20 | Starting wolf count |
+| sheep_reproduce_threshold | 6 | Energy needed to reproduce |
+| wolf_reproduce_threshold | 24 | Energy needed to reproduce |
 | sheep_gain_from_food | 4 | Energy per grass patch |
 | wolf_gain_from_food | 20 | Energy per sheep eaten |
 | grass_regrowth_time | 30 | Steps to regrow |

@@ -36,13 +36,17 @@ const SimulationPage: React.FC<Props> = ({ modelId, onBack }) => {
 
   useEffect(() => {
     const backendParams = transformParams(modelId, config.defaultParams);
-    createSimulation({ model_type: modelId, params: backendParams }).then(connectWebSocket);
+    void createSimulation({ model_type: modelId, params: backendParams })
+      .then(connectWebSocket)
+      .catch(() => undefined);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [modelId]);
 
   const handleCreateNew = (newParams: Record<string, number>) => {
     const backendParams = transformParams(modelId, newParams);
-    createSimulation({ model_type: modelId, params: backendParams }).then(connectWebSocket);
+    void createSimulation({ model_type: modelId, params: backendParams })
+      .then(connectWebSocket)
+      .catch(() => undefined);
   };
 
   const code = generateCode(modelId, transformParams(modelId, params));
@@ -107,7 +111,7 @@ const SimulationPage: React.FC<Props> = ({ modelId, onBack }) => {
                 </div>
               </div>
               <div className="flex justify-center">
-                <SimulationGrid gridState={gridState} config={config} maxSize={640} />
+                <SimulationGrid gridState={gridState} config={config} error={error} maxSize={640} />
               </div>
             </div>
 

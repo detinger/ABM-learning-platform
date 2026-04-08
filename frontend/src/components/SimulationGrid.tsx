@@ -44,16 +44,28 @@ GridCell.displayName = 'GridCell';
 interface SimulationGridProps {
   gridState: { width: number; height: number; agents: Agent[] } | null;
   config: ModelConfig;
+  error?: string | null;
   maxSize?: number;
 }
 
-const SimulationGrid: React.FC<SimulationGridProps> = ({ gridState, config, maxSize = 640 }) => {
+const SimulationGrid: React.FC<SimulationGridProps> = ({ gridState, config, error, maxSize = 640 }) => {
   if (!gridState) {
     return (
       <div className="flex items-center justify-center h-[400px] bg-slate-900/50 rounded-xl border border-slate-700">
         <div className="text-slate-500 flex flex-col items-center gap-4">
-          <div className="w-10 h-10 rounded-full border-4 border-slate-700 border-t-slate-400 animate-spin" />
-          <p className="text-sm">Connecting to simulation...</p>
+          {error ? (
+            <>
+              <div className="text-center space-y-2">
+                <p className="text-sm text-red-300">Could not connect to simulation</p>
+                <p className="max-w-md text-xs text-slate-400">{error}</p>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="w-10 h-10 rounded-full border-4 border-slate-700 border-t-slate-400 animate-spin" />
+              <p className="text-sm">Connecting to simulation...</p>
+            </>
+          )}
         </div>
       </div>
     );
