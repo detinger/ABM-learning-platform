@@ -1,11 +1,6 @@
-fastapi>=0.104.0
-uvicorn[standard]>=0.24.0
-mesa>=3.0.0
-numpy>=1.24.0
-matplotlib>=3.7.0
-networkx>=3.0
-solara>=1.30.0
-websockets>=12.0
-pydantic>=2.0.0
-python-multipart>=0.0.6
-aiofiles>=23.0.0
+# Runtime dependencies (installed in the Docker image and by start.sh).
+# Pinned for reproducible deploys; bump deliberately and re-run the tests.
+mesa==3.5.1
+fastapi==0.135.3
+uvicorn[standard]==0.44.0
+pydantic==2.12.5

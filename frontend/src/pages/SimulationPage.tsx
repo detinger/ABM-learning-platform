@@ -1,189 +1,237 @@
-import React, { useEffect, useState } from 'react';
-import { ArrowLeft, Code } from 'lucide-react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { Code, Download, Grid3x3, LineChart, Table2 } from 'lucide-react';
 import { useSimulation } from '../hooks/useSimulation';
-import SimulationGrid from '../components/SimulationGrid';
+import SimulationCanvas from '../components/SimulationCanvas';
 import PopulationChart from '../components/PopulationChart';
-import ControlPanel from '../components/ControlPanel';
+import HistoryTable from '../components/HistoryTable';
+import { downloadText, historyToCsv } from '../lib/export';
 import CodeModal from '../components/CodeModal';
-import { MODEL_CONFIGS, transformParams } from '../models/configs';
+import { ParametersCard, RunControls } from '../components/SimulationControls';
+import { Callout, Card, EmptyState, TabPanel, Tabs } from '../components/ui';
+import { modelTokens, transformParams, type CountDisplay, type ModelConfig } from '../models/configs';
 import { generateCode } from '../models/codeGenerators';
+import { useTokens } from '../app/theme';
 
-interface Props {
-  modelId: string;
-  onBack: () => void;
+function formatCount(value: number | undefined, format: CountDisplay['format']) {
+  if (typeof value !== 'number') return '—';
+  if (format === 'percent') return `${value.toFixed(1)}%`;
+  if (format === 'decimal') return value.toLocaleString(undefined, { maximumFractionDigits: 3 });
+  return Number.isInteger(value) ? value.toLocaleString() : value.toFixed(2);
 }
 
-const SimulationPage: React.FC<Props> = ({ modelId, onBack }) => {
-  const config = MODEL_CONFIGS[modelId];
+const isTyping = (target: EventTarget | null) =>
+  target instanceof HTMLElement && (target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName) && (target as HTMLInputElement).type !== 'range');
 
-  const {
-    simulationId,
-    gridState,
-    history,
-    isRunning,
-    isConnected,
-    error,
-    createSimulation,
-    connectWebSocket,
-    startSimulation,
-    pauseSimulation,
-    stepSimulation,
-    resetSimulation,
-  } = useSimulation();
-
+const SimulationPage: React.FC<{ config: ModelConfig }> = ({ config }) => {
+  const sim = useSimulation();
+  const { launch, start, pause, step, reset, setSpeed: sendSpeed, updateLiveParams } = sim;
   const [params, setParams] = useState<Record<string, number>>(config.defaultParams);
+  const [applied, setApplied] = useState<Record<string, number>>(config.defaultParams);
+  const [seed, setSeed] = useState('');
+  const [speed, setSpeed] = useState(0.3);
   const [showCode, setShowCode] = useState(false);
+  const [view, setView] = useState<'chart' | 'table'>('chart');
+  const colors = useTokens(useMemo(() => modelTokens(config), [config]));
+
+  const create = useCallback(
+    (values: Record<string, number>, seedText: string) => {
+      const backend: Record<string, number> = transformParams(config.id, values);
+      if (seedText) backend.seed = Number(seedText);
+      setApplied(values);
+      void launch(config.id, backend);
+    },
+    [config.id, launch],
+  );
+
+  // A fresh simulation whenever the model changes (navigating between models).
+  useEffect(() => {
+    setParams(config.defaultParams);
+    setSeed('');
+    create(config.defaultParams, '');
+  }, [config, create]);
 
   useEffect(() => {
-    const backendParams = transformParams(modelId, config.defaultParams);
-    void createSimulation({ model_type: modelId, params: backendParams })
-      .then(connectWebSocket)
-      .catch(() => undefined);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [modelId]);
+    document.title = `${config.name} · ABM Learning Platform`;
+  }, [config.name]);
 
-  const handleCreateNew = (newParams: Record<string, number>) => {
-    const backendParams = transformParams(modelId, newParams);
-    void createSimulation({ model_type: modelId, params: backendParams })
-      .then(connectWebSocket)
-      .catch(() => undefined);
+  const handleStart = useCallback(() => start(speed), [start, speed]);
+  const handleSpeed = (value: number) => {
+    setSpeed(value);
+    if (sim.isRunning) sendSpeed(value);
   };
 
-  const code = generateCode(modelId, transformParams(modelId, params));
+  // Keyboard shortcuts: Space run/pause, S step, R reset.
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.metaKey || event.ctrlKey || event.altKey || isTyping(event.target) || showCode) return;
+      if (event.target instanceof HTMLButtonElement && event.key === ' ') return; // let buttons handle Space
+      if (event.key === ' ') {
+        event.preventDefault();
+        if (sim.isRunning) pause();
+        else if (sim.status === 'ready') handleStart();
+      } else if (event.key.toLowerCase() === 's' && sim.status === 'ready') {
+        step(1);
+      } else if (event.key.toLowerCase() === 'r' && sim.isConnected) {
+        reset();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [sim.isRunning, sim.isConnected, sim.status, pause, handleStart, step, reset, showCode]);
+
+  const code = useMemo(() => generateCode(config.id, transformParams(config.id, params)), [config.id, params]);
+  const Icon = config.icon;
+  const counts = sim.gridState?.counts ?? {};
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100">
-      {/* Header */}
-      <header className="border-b border-slate-800 bg-slate-900/50 backdrop-blur-sm sticky top-0 z-10">
-        <div className="max-w-7xl mx-auto px-4 py-3 flex items-center gap-4">
+    <div className="page">
+      <header className="page-header">
+        <div className="min-w-0">
+          <div className="eyebrow">Model</div>
+          <h1 className="flex items-center gap-2">
+            <Icon size={24} className="text-primary" aria-hidden />
+            {config.name}
+          </h1>
+          <p className="page-description">{config.description}</p>
+        </div>
+        <div className="flex flex-wrap gap-2">
           <button
-            onClick={onBack}
-            className="flex items-center gap-1.5 text-sm text-slate-400 hover:text-slate-200 transition-colors"
+            type="button"
+            className="btn"
+            disabled={sim.history.length === 0}
+            onClick={() => downloadText(`${config.id}-history.csv`, historyToCsv(sim.history, config.metrics))}
           >
-            <ArrowLeft className="w-4 h-4" />
-            <span>Models</span>
+            <Download size={16} /> Export CSV
           </button>
-
-          <div className="h-5 border-l border-slate-700" />
-
-          <div className="flex items-center gap-3">
-            <span className="text-2xl">{config.icon}</span>
-            <div>
-              <h1 className="text-base font-bold text-slate-100 leading-tight">{config.name}</h1>
-              <p className="text-xs text-slate-500">{config.tagline}</p>
-            </div>
-          </div>
-
-          <div className="ml-auto flex items-center gap-3">
-            <button
-              onClick={() => setShowCode(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs text-slate-300 hover:text-white transition-colors"
-            >
-              <Code className="w-3.5 h-3.5" />
-              Python Code
-            </button>
-            {simulationId && (
-              <span className="text-xs text-slate-600 font-mono hidden sm:block">id:{simulationId}</span>
-            )}
-          </div>
+          <button type="button" className="btn" onClick={() => setShowCode(true)}>
+            <Code size={16} /> Python code
+          </button>
         </div>
       </header>
 
-      {/* Main */}
-      <main className="max-w-7xl mx-auto px-4 py-6">
-        <div className="grid lg:grid-cols-[1fr_320px] gap-6">
-          {/* Left: Grid + Chart */}
-          <div className="space-y-6">
-            {/* Grid */}
-            <div className="bg-slate-900/50 border border-slate-800 rounded-xl p-4">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-sm font-semibold text-slate-300">Grid Visualization</h2>
-                <div className="flex flex-wrap gap-3">
-                  {config.legend.map((entry) => (
-                    <div key={entry.label} className="flex items-center gap-1.5 text-xs text-slate-400">
-                      <div
-                        className="w-3 h-3 rounded-full border border-slate-600"
-                        style={{ backgroundColor: entry.color }}
-                      />
-                      {entry.label}
-                    </div>
-                  ))}
-                </div>
-              </div>
-              <div className="flex justify-center">
-                <SimulationGrid gridState={gridState} config={config} error={error} maxSize={640} />
-              </div>
+      <div className="config-results">
+        <div className="stack">
+          <RunControls
+            status={sim.status}
+            step={sim.gridState?.step ?? 0}
+            speed={speed}
+            onSpeedChange={handleSpeed}
+            onStart={handleStart}
+            onPause={pause}
+            onStep={step}
+            onReset={reset}
+          />
+          <ParametersCard
+            config={config}
+            params={params}
+            applied={applied}
+            seed={seed}
+            onSeedChange={setSeed}
+            onChange={setParams}
+            onLiveChange={(key, value) => updateLiveParams(transformParams(config.id, { [key]: value }))}
+            onCreate={() => create(params, seed)}
+            onRestoreDefaults={() => setParams(config.defaultParams)}
+            busy={sim.status === 'connecting'}
+          />
+          <Card title="How it works">
+            <ul className="prose m-0 flex list-disc flex-col gap-1.5 pl-5 text-[13px] text-muted">
+              {config.rules.map((rule) => (
+                <li key={rule}>{rule}</li>
+              ))}
+            </ul>
+            <h3 className="mb-2 mt-4 text-[13px]">Key concepts</h3>
+            <div className="chips">
+              {config.concepts.map((c) => (
+                <span key={c} className="chip">
+                  {c}
+                </span>
+              ))}
             </div>
-
-            {/* Chart */}
-            <div className="bg-slate-900/50 border border-slate-800 rounded-xl p-4">
-              <h2 className="text-sm font-semibold text-slate-300 mb-3">Time Series</h2>
-              <PopulationChart data={history} metrics={config.metrics} />
-            </div>
-
-            {/* Model info */}
-            <div className="grid sm:grid-cols-2 gap-4">
-              <div className="bg-slate-900/50 border border-slate-800 rounded-xl p-4">
-                <h3 className="text-sm font-semibold text-slate-300 mb-3">Rules</h3>
-                <ul className="space-y-2">
-                  {config.rules.map((rule, i) => (
-                    <li key={i} className="flex items-start gap-2 text-xs text-slate-400">
-                      <span className="text-slate-600 mt-0.5">•</span>
-                      <span>{rule}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-              <div className="bg-slate-900/50 border border-slate-800 rounded-xl p-4">
-                <h3 className="text-sm font-semibold text-slate-300 mb-3">Key Concepts</h3>
-                <div className="flex flex-wrap gap-2">
-                  {config.concepts.map((c) => (
-                    <span
-                      key={c}
-                      className="text-xs px-2 py-1 rounded-full bg-slate-800 text-slate-300 border border-slate-700"
-                    >
-                      {c}
-                    </span>
-                  ))}
-                </div>
-                <div className="mt-4 space-y-1 text-xs text-slate-500">
-                  <p>• Press <strong className="text-slate-400">Start</strong> for continuous simulation</p>
-                  <p>• Press <strong className="text-slate-400">Step</strong> to advance one tick</p>
-                  <p>• Click <strong className="text-slate-400">Python Code</strong> to export for Colab</p>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Right: Controls */}
-          <div>
-            <ControlPanel
-              config={config}
-              params={params}
-              setParams={setParams}
-              isRunning={isRunning}
-              isConnected={isConnected}
-              currentStep={gridState?.step ?? 0}
-              counts={gridState?.counts ?? {}}
-              onStart={startSimulation}
-              onPause={pauseSimulation}
-              onStep={stepSimulation}
-              onReset={resetSimulation}
-              onCreateNew={handleCreateNew}
-              error={error}
-            />
-          </div>
+          </Card>
         </div>
-      </main>
 
-      {/* Code modal */}
-      {showCode && (
-        <CodeModal
-          modelName={config.name}
-          code={code}
-          onClose={() => setShowCode(false)}
-        />
-      )}
+        <div className="stack">
+          {sim.error && (
+            <Callout tone="error" title="Something went wrong" onDismiss={sim.status === 'error' ? undefined : sim.clearError}>
+              <p>{sim.error}</p>
+              {(sim.status === 'error' || sim.status === 'disconnected') && (
+                <button type="button" className="btn btn-sm mt-1" onClick={() => create(params, seed)}>
+                  Try again
+                </button>
+              )}
+            </Callout>
+          )}
+          {sim.notice && (
+            <Callout tone={sim.notice.tone} onDismiss={sim.clearNotice}>
+              <p>{sim.notice.message}</p>
+            </Callout>
+          )}
+
+          <div className="kpi-grid" aria-live="polite">
+            {config.countDisplay.map((cd) => (
+              <div key={cd.key} className="kpi">
+                <div className="kpi-label">
+                  {cd.token && <span className="swatch" style={{ background: colors[cd.token] }} aria-hidden />}
+                  {cd.label}
+                </div>
+                <div className="kpi-value">{formatCount(counts[cd.key], cd.format)}</div>
+                {cd.detail && <div className="kpi-detail">{cd.detail}</div>}
+              </div>
+            ))}
+          </div>
+
+          <Card
+            title="Grid"
+            subtitle={sim.gridState ? `Step ${sim.gridState.step.toLocaleString()}` : 'Waiting for the first state'}
+          >
+            <div className="legend mb-3">
+              {config.legend.map((entry) => (
+                <span key={entry.label} className="legend-item">
+                  <span className="swatch" style={{ background: colors[entry.token] }} aria-hidden />
+                  {entry.label}
+                </span>
+              ))}
+            </div>
+            {sim.gridState ? (
+              <SimulationCanvas gridState={sim.gridState} config={config} />
+            ) : sim.status === 'connecting' ? (
+              <div className="sim-canvas-frame items-center">
+                <div className="empty-state">
+                  <div className="spinner" aria-hidden />
+                  <h3>Creating simulation…</h3>
+                </div>
+              </div>
+            ) : (
+              <EmptyState icon={<Grid3x3 size={22} />} title="No simulation">
+                <p>Create a new simulation to see the grid.</p>
+              </EmptyState>
+            )}
+          </Card>
+
+          <Card title="Time series" subtitle="Metric values per step">
+            <Tabs
+              idPrefix="series"
+              label="Time series view"
+              dense
+              value={view}
+              onChange={setView}
+              items={[
+                { id: 'chart', label: 'Chart', icon: <LineChart size={14} /> },
+                { id: 'table', label: 'Table', icon: <Table2 size={14} /> },
+              ]}
+            />
+            <TabPanel idPrefix="series" id={view} className="pt-4">
+              {view === 'chart' ? (
+                <PopulationChart data={sim.history} metrics={config.metrics} />
+              ) : (
+                <HistoryTable data={sim.history} metrics={config.metrics} />
+              )}
+            </TabPanel>
+          </Card>
+        </div>
+      </div>
+
+      {showCode && <CodeModal modelName={config.name} modelId={config.id} code={code} onClose={() => setShowCode(false)} />}
     </div>
   );
 };

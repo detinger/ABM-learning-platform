@@ -4,9 +4,10 @@ Demonstrates: disease spreading, herd immunity, R0, epidemic curves, phase trans
 """
 
 from mesa import Agent, Model
-from mesa.space import MultiGrid
 from mesa.datacollection import DataCollector
-import random
+from mesa.space import MultiGrid
+
+from .base import history_rows
 
 
 class Person(Agent):
@@ -27,12 +28,12 @@ class Person(Agent):
 
     def _move(self):
         neighborhood = self.model.grid.get_neighborhood(self.pos, moore=True, include_center=False)
-        self.model.grid.move_agent(self, random.choice(neighborhood))
+        self.model.grid.move_agent(self, self.random.choice(neighborhood))
 
     def _try_infect_neighbors(self):
         for neighbor in self.model.grid.get_neighbors(self.pos, moore=True):
             if neighbor.state == "susceptible":
-                if random.random() < self.model.transmission_rate:
+                if self.random.random() < self.model.transmission_rate:
                     neighbor.state = "infected"
                     neighbor.infection_timer = self.model.recovery_time
 
@@ -45,14 +46,14 @@ class SIRModel(Model):
     MODEL_TYPE = "sir"
 
     def __init__(self, width=30, height=30, population=400,
-                 initial_infected=5, transmission_rate=0.3, recovery_time=14):
-        super().__init__()
+                 initial_infected=5, transmission_rate=0.3, recovery_time=14, seed=None):
+        super().__init__(rng=seed)
         self.width = width
         self.height = height
         self.transmission_rate = transmission_rate
         self.recovery_time = recovery_time
         self.initial_params = dict(
-            width=width, height=height, population=population,
+            seed=seed, width=width, height=height, population=population,
             initial_infected=initial_infected,
             transmission_rate=transmission_rate, recovery_time=recovery_time,
         )
@@ -67,7 +68,7 @@ class SIRModel(Model):
         for i in range(population):
             state = "infected" if i < initial_infected else "susceptible"
             person = Person(self, state)
-            pos = (random.randrange(width), random.randrange(height))
+            pos = (self.random.randrange(width), self.random.randrange(height))
             self.grid.place_agent(person, pos)
 
         self.running = True
@@ -95,8 +96,9 @@ class SIRModel(Model):
             "width": self.grid.width, "height": self.grid.height,
         }
 
-    def get_api_history(self):
-        df = self.datacollector.get_model_vars_dataframe()
-        return [{"step": int(s), "susceptible": int(r["Susceptible"]),
-                 "infected": int(r["Infected"]), "recovered": int(r["Recovered"])}
-                for s, r in df.iterrows()]
+    def get_api_history(self, start=0):
+        return history_rows(self, {
+            "susceptible": ("Susceptible", int),
+            "infected": ("Infected", int),
+            "recovered": ("Recovered", int),
+        }, start)

@@ -4,9 +4,10 @@ Demonstrates: percolation theory, phase transitions, critical thresholds, cascad
 """
 
 from mesa import Agent, Model
-from mesa.space import SingleGrid
 from mesa.datacollection import DataCollector
-import random
+from mesa.space import SingleGrid
+
+from .base import history_rows
 
 
 class TreeCell(Agent):
@@ -24,7 +25,7 @@ class TreeCell(Agent):
         # Spread fire to orthogonal (von Neumann) neighbors
         for neighbor in self.model.grid.get_neighbors(self.pos, moore=False):
             if neighbor.state == "tree":
-                if random.random() < self.model.spread_prob:
+                if self.random.random() < self.model.spread_prob:
                     neighbor.state = "fire"
         self.state = "burned"
 
@@ -36,13 +37,13 @@ class ForestFireModel(Model):
     """
     MODEL_TYPE = "forest_fire"
 
-    def __init__(self, width=60, height=40, tree_density=0.65, spread_prob=1.0):
-        super().__init__()
+    def __init__(self, width=60, height=40, tree_density=0.65, spread_prob=1.0, seed=None):
+        super().__init__(rng=seed)
         self.width = width
         self.height = height
         self.spread_prob = spread_prob
         self.initial_params = dict(
-            width=width, height=height,
+            seed=seed, width=width, height=height,
             tree_density=tree_density, spread_prob=spread_prob,
         )
 
@@ -56,7 +57,7 @@ class ForestFireModel(Model):
         # Fill every cell with a TreeCell agent
         for x in range(width):
             for y in range(height):
-                if random.random() < tree_density:
+                if self.random.random() < tree_density:
                     state = "fire" if x == 0 else "tree"
                 else:
                     state = "empty"
@@ -89,8 +90,9 @@ class ForestFireModel(Model):
             "width": self.grid.width, "height": self.grid.height,
         }
 
-    def get_api_history(self):
-        df = self.datacollector.get_model_vars_dataframe()
-        return [{"step": int(s), "trees": int(r["Trees"]),
-                 "fire": int(r["Fire"]), "burned": int(r["Burned"])}
-                for s, r in df.iterrows()]
+    def get_api_history(self, start=0):
+        return history_rows(self, {
+            "trees": ("Trees", int),
+            "fire": ("Fire", int),
+            "burned": ("Burned", int),
+        }, start)

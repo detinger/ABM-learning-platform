@@ -3,11 +3,12 @@ Wealth Distribution Model (Sugarscape-inspired)
 Demonstrates: inequality emergence, Pareto principle, resource competition, Gini coefficient
 """
 
+
 from mesa import Agent, Model
-from mesa.space import MultiGrid
 from mesa.datacollection import DataCollector
-import random
-import math
+from mesa.space import MultiGrid
+
+from .base import history_rows
 
 
 class SugarPatch(Agent):
@@ -78,13 +79,13 @@ class WealthModel(Model):
     MODEL_TYPE = "wealth"
 
     def __init__(self, width=40, height=30, num_agents=200,
-                 max_vision=5, max_metabolism=4, max_initial_sugar=20):
-        super().__init__()
+                 max_vision=5, max_metabolism=4, max_initial_sugar=20, seed=None):
+        super().__init__(rng=seed)
         self.width = width
         self.height = height
         self._dying_agents = []
         self.initial_params = dict(
-            width=width, height=height, num_agents=num_agents,
+            seed=seed, width=width, height=height, num_agents=num_agents,
             max_vision=max_vision, max_metabolism=max_metabolism,
             max_initial_sugar=max_initial_sugar,
         )
@@ -110,10 +111,10 @@ class WealthModel(Model):
         self._max_metabolism = max_metabolism
         self._max_initial_sugar = max_initial_sugar
         for _ in range(num_agents):
-            pos = (random.randrange(width), random.randrange(height))
-            vision = random.randint(1, max_vision)
-            metabolism = random.randint(1, max_metabolism)
-            sugar = random.randint(5, max_initial_sugar)
+            pos = (self.random.randrange(width), self.random.randrange(height))
+            vision = self.random.randint(1, max_vision)
+            metabolism = self.random.randint(1, max_metabolism)
+            sugar = self.random.randint(5, max_initial_sugar)
             self.grid.place_agent(WealthAgent(self, vision, metabolism, sugar), pos)
 
         self.running = True
@@ -126,9 +127,9 @@ class WealthModel(Model):
         # Replace dead agents with new ones
         for agent in self._dying_agents:
             agent.remove()
-            pos = (random.randrange(self.width), random.randrange(self.height))
-            v = random.randint(1, self._max_vision)
-            m = random.randint(1, self._max_metabolism)
+            pos = (self.random.randrange(self.width), self.random.randrange(self.height))
+            v = self.random.randint(1, self._max_vision)
+            m = self.random.randint(1, self._max_metabolism)
             self.grid.place_agent(WealthAgent(self, v, m, 5), pos)
 
         self.datacollector.collect(self)
@@ -181,8 +182,10 @@ class WealthModel(Model):
             "width": self.grid.width, "height": self.grid.height,
         }
 
-    def get_api_history(self):
-        df = self.datacollector.get_model_vars_dataframe()
-        return [{"step": int(s), "mean_wealth": float(r["MeanWealth"]),
-                 "gini": float(r["Gini"]), "agents": int(r["Agents"])}
-                for s, r in df.iterrows()]
+    def get_api_history(self, start=0):
+        # Gini is scaled x100 so it shares a readable axis with the other series.
+        return history_rows(self, {
+            "mean_wealth": ("MeanWealth", float),
+            "gini": ("Gini", lambda v: round(float(v) * 100, 1)),
+            "agents": ("Agents", int),
+        }, start)

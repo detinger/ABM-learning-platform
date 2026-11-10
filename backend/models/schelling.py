@@ -4,9 +4,10 @@ Demonstrates: emergence, residential segregation, tipping points, self-organizat
 """
 
 from mesa import Agent, Model
-from mesa.space import SingleGrid
 from mesa.datacollection import DataCollector
-import random
+from mesa.space import SingleGrid
+
+from .base import history_rows
 
 
 class SchellingAgent(Agent):
@@ -29,7 +30,7 @@ class SchellingAgent(Agent):
         if not self.happy:
             empties = self._get_empty_positions()
             if empties:
-                self.model.grid.move_agent(self, random.choice(empties))
+                self.model.grid.move_agent(self, self.random.choice(empties))
 
     def _get_empty_positions(self):
         occupied = {a.pos for a in self.model.agents}
@@ -47,13 +48,13 @@ class SchellingModel(Model):
     MODEL_TYPE = "schelling"
 
     def __init__(self, width=30, height=30, density=0.80,
-                 minority_pct=0.30, homophily=0.30):
-        super().__init__()
+                 minority_pct=0.30, homophily=0.30, seed=None):
+        super().__init__(rng=seed)
         self.width = width
         self.height = height
         self.homophily = homophily
         self.initial_params = dict(
-            width=width, height=height, density=density,
+            seed=seed, width=width, height=height, density=density,
             minority_pct=minority_pct, homophily=homophily,
         )
 
@@ -66,7 +67,7 @@ class SchellingModel(Model):
         })
 
         all_positions = [(x, y) for x in range(width) for y in range(height)]
-        random.shuffle(all_positions)
+        self.random.shuffle(all_positions)
         total_agents = int(len(all_positions) * density)
         num_minority = int(total_agents * minority_pct)
 
@@ -103,11 +104,10 @@ class SchellingModel(Model):
             "width": self.grid.width, "height": self.grid.height,
         }
 
-    def get_api_history(self):
-        df = self.datacollector.get_model_vars_dataframe()
-        total = sum(1 for _ in self.agents) or 1
-        return [{"step": int(s),
-                 "happy_pct": round(int(r["Happy"]) / total * 100, 1),
-                 "type_a": int(r["TypeA"]),
-                 "type_b": int(r["TypeB"])}
-                for s, r in df.iterrows()]
+    def get_api_history(self, start=0):
+        total = len(self.agents) or 1
+        return history_rows(self, {
+            "happy_pct": ("Happy", lambda v: round(int(v) / total * 100, 1)),
+            "type_a": ("TypeA", int),
+            "type_b": ("TypeB", int),
+        }, start)

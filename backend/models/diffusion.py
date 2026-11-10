@@ -4,9 +4,10 @@ Demonstrates: technology adoption S-curves, social influence, word-of-mouth effe
 """
 
 from mesa import Agent, Model
-from mesa.space import SingleGrid
 from mesa.datacollection import DataCollector
-import random
+from mesa.space import SingleGrid
+
+from .base import history_rows
 
 
 class InnovationAgent(Agent):
@@ -21,7 +22,7 @@ class InnovationAgent(Agent):
             return
 
         # Spontaneous adoption (innovators) — independent of neighbors
-        if random.random() < self.model.innovation_coeff:
+        if self.random.random() < self.model.innovation_coeff:
             self.adopted = True
             return
 
@@ -31,7 +32,7 @@ class InnovationAgent(Agent):
             adopter_count = sum(1 for n in neighbors if n.adopted)
             if adopter_count > 0:
                 imitation_prob = self.model.imitation_coeff * (adopter_count / len(neighbors))
-                if random.random() < imitation_prob:
+                if self.random.random() < imitation_prob:
                     self.adopted = True
 
 
@@ -43,14 +44,14 @@ class DiffusionModel(Model):
     MODEL_TYPE = "diffusion"
 
     def __init__(self, width=40, height=30, density=0.85,
-                 innovation_coeff=0.01, imitation_coeff=0.5, initial_adopters=3):
-        super().__init__()
+                 innovation_coeff=0.01, imitation_coeff=0.5, initial_adopters=3, seed=None):
+        super().__init__(rng=seed)
         self.width = width
         self.height = height
         self.innovation_coeff = innovation_coeff
         self.imitation_coeff = imitation_coeff
         self.initial_params = dict(
-            width=width, height=height, density=density,
+            seed=seed, width=width, height=height, density=density,
             innovation_coeff=innovation_coeff, imitation_coeff=imitation_coeff,
             initial_adopters=initial_adopters,
         )
@@ -62,7 +63,7 @@ class DiffusionModel(Model):
         })
 
         all_positions = [(x, y) for x in range(width) for y in range(height)]
-        random.shuffle(all_positions)
+        self.random.shuffle(all_positions)
         total_agents = int(len(all_positions) * density)
 
         for i, pos in enumerate(all_positions[:total_agents]):
@@ -96,8 +97,8 @@ class DiffusionModel(Model):
             "width": self.grid.width, "height": self.grid.height,
         }
 
-    def get_api_history(self):
-        df = self.datacollector.get_model_vars_dataframe()
-        return [{"step": int(s), "adopters": int(r["Adopters"]),
-                 "non_adopters": int(r["NonAdopters"])}
-                for s, r in df.iterrows()]
+    def get_api_history(self, start=0):
+        return history_rows(self, {
+            "adopters": ("Adopters", int),
+            "non_adopters": ("NonAdopters", int),
+        }, start)

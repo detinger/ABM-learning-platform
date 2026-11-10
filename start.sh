@@ -1,163 +1,108 @@
 #!/bin/bash
-# ABM Learning Platform — start backend + frontend
+# ABM Learning Platform: local runner.
+#
+#   ./start.sh          Development: FastAPI with auto-reload on :8000 and the
+#                       Vite dev server on :3000 (open http://localhost:3000).
+#   ./start.sh --prod   Production-like: build the frontend and serve everything
+#                       from FastAPI on :8000, the same way Railway runs it.
+#
+# Environment: PORT (backend port, default 8000), plus anything in .env.
 
 set -euo pipefail
 
-SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$SCRIPT_DIR"
+REPO_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 VENV_DIR="$REPO_ROOT/.venv"
-BACKEND_DIR="$REPO_ROOT/backend"
 FRONTEND_DIR="$REPO_ROOT/frontend"
 VENV_PYTHON="$VENV_DIR/bin/python"
+MODE="dev"
 
-echo "ABM Learning Platform"
+case "${1:-}" in
+    --prod|prod) MODE="prod" ;;
+    ""|--dev|dev) MODE="dev" ;;
+    -h|--help) sed -n '2,10p' "$0"; exit 0 ;;
+    *) echo "Unknown option: $1 (use --prod or --dev)"; exit 1 ;;
+esac
+
+GREEN='\033[0;32m'; BLUE='\033[0;34m'; RED='\033[0;31m'; NC='\033[0m'
+info() { echo -e "${BLUE}$*${NC}"; }
+ok()   { echo -e "${GREEN}$*${NC}"; }
+die()  { echo -e "${RED}Error: $*${NC}"; exit 1; }
+
+# Load .env if present (simple KEY=VALUE lines).
+if [ -f "$REPO_ROOT/.env" ]; then
+    set -a; . "$REPO_ROOT/.env"; set +a
+fi
+BACKEND_PORT="${PORT:-8000}"
+FRONTEND_PORT=3000
+
+command -v python3 >/dev/null 2>&1 || die "python3 is required but was not found on PATH."
+command -v npm >/dev/null 2>&1 || die "npm is required but was not found on PATH."
+
+port_in_use() {
+    if command -v lsof >/dev/null 2>&1; then
+        [ -n "$(lsof -tiTCP:"$1" -sTCP:LISTEN 2>/dev/null || true)" ]
+    else
+        (echo >"/dev/tcp/127.0.0.1/$1") >/dev/null 2>&1
+    fi
+}
+
+echo "ABM Learning Platform ($MODE)"
 echo "=========================="
 
-GREEN='\033[0;32m'
-BLUE='\033[0;34m'
-RED='\033[0;31m'
-NC='\033[0m'
+# ---- Dependencies -----------------------------------------------------------
+if [ ! -x "$VENV_PYTHON" ]; then
+    info "Creating virtual environment in .venv ..."
+    python3 -m venv "$VENV_DIR"
+fi
+info "Installing Python dependencies..."
+"$VENV_PYTHON" -m pip install -q -r "$REPO_ROOT/requirements.txt"
 
-BACKEND_PID=""
-FRONTEND_PID=""
+if [ ! -d "$FRONTEND_DIR/node_modules" ] || [ "$FRONTEND_DIR/package-lock.json" -nt "$FRONTEND_DIR/node_modules" ]; then
+    info "Installing frontend dependencies..."
+    (cd "$FRONTEND_DIR" && npm install --no-audit --no-fund && touch node_modules)
+fi
+ok "✓ Dependencies ready"
+echo ""
 
+port_in_use "$BACKEND_PORT" && die "port $BACKEND_PORT is already in use. Stop that process or set PORT=<other>."
+
+# ---- Production-like --------------------------------------------------------
+if [ "$MODE" = "prod" ]; then
+    info "Building frontend..."
+    (cd "$FRONTEND_DIR" && npm run build)
+    ok "Serving app + API on http://localhost:$BACKEND_PORT (Ctrl+C to stop)"
+    cd "$REPO_ROOT"
+    PORT="$BACKEND_PORT" exec "$VENV_PYTHON" -m backend.main_api
+fi
+
+# ---- Development ------------------------------------------------------------
+port_in_use "$FRONTEND_PORT" && die "port $FRONTEND_PORT is already in use (another Vite server?)."
+
+PIDS=()
 cleanup() {
-    if [ -z "${BACKEND_PID:-}" ] && [ -z "${FRONTEND_PID:-}" ]; then
-        return
-    fi
-
-    echo ""
-    echo "Stopping..."
-    if [ -n "${BACKEND_PID:-}" ]; then
-        kill "$BACKEND_PID" 2>/dev/null || true
-    fi
-    if [ -n "${FRONTEND_PID:-}" ]; then
-        kill "$FRONTEND_PID" 2>/dev/null || true
-    fi
+    trap - EXIT INT TERM
+    echo ""; echo "Stopping..."
+    for pid in "${PIDS[@]:-}"; do [ -n "$pid" ] && kill "$pid" 2>/dev/null || true; done
+    wait 2>/dev/null || true
 }
-
-port_listener_pids() {
-    local port="$1"
-    lsof -tiTCP:"$port" -sTCP:LISTEN 2>/dev/null || true
-}
-
-port_is_in_use() {
-    local port="$1"
-    if [ -n "$(port_listener_pids "$port")" ]; then
-        return 0
-    fi
-    return 1
-}
-
-describe_port_usage() {
-    local port="$1"
-    lsof -nP -iTCP:"$port" -sTCP:LISTEN 2>/dev/null || true
-}
-
-require_running() {
-    local pid="$1"
-    local name="$2"
-    local url="$3"
-
-    if ! kill -0 "$pid" 2>/dev/null; then
-        echo -e "${RED}Error: ${name} failed to start. Check the logs above for details.${NC}"
-        exit 1
-    fi
-
-    echo -e "${GREEN}${name} is running at ${url}${NC}"
-}
-
 trap cleanup EXIT INT TERM
 
 cd "$REPO_ROOT"
+"$VENV_PYTHON" -m uvicorn backend.main_api:app --reload --reload-dir backend \
+    --host 127.0.0.1 --port "$BACKEND_PORT" &
+PIDS+=($!)
 
-if ! command -v python3 >/dev/null 2>&1; then
-    echo -e "${RED}Error: python3 is required but was not found on PATH.${NC}"
-    exit 1
-fi
+(cd "$FRONTEND_DIR" && BACKEND_PORT="$BACKEND_PORT" exec npm run dev -- --port "$FRONTEND_PORT" --strictPort) &
+PIDS+=($!)
 
-if ! command -v npm >/dev/null 2>&1; then
-    echo -e "${RED}Error: npm is required but was not found on PATH.${NC}"
-    exit 1
-fi
-
-if ! command -v lsof >/dev/null 2>&1; then
-    echo -e "${RED}Error: lsof is required but was not found on PATH.${NC}"
-    exit 1
-fi
-
-# Virtual environment
-if [ ! -d "$VENV_DIR" ]; then
-    echo "Creating virtual environment..."
-    python3 -m venv "$VENV_DIR"
-fi
-
-if [ ! -x "$VENV_PYTHON" ]; then
-    echo -e "${RED}Error: virtual environment is missing python in $VENV_DIR/bin.${NC}"
-    exit 1
-fi
-
-echo -e "${BLUE}Installing Python dependencies...${NC}"
-"$VENV_PYTHON" -m pip install -q -r "$REPO_ROOT/requirements.txt"
-
-# Frontend dependencies
-if [ ! -d "$FRONTEND_DIR/node_modules" ]; then
-    echo -e "${BLUE}Installing frontend dependencies...${NC}"
-    (
-        cd "$FRONTEND_DIR"
-        npm install
-    )
-fi
-
-echo -e "${GREEN}✓ Dependencies ready${NC}"
-echo ""
-
-# Backend — run from backend/ so relative imports work
-if port_is_in_use 8000; then
-    echo -e "${BLUE}FastAPI backend already appears to be running on http://localhost:8000${NC}"
-    describe_port_usage 8000
-else
-    echo -e "${GREEN}Starting FastAPI backend on http://localhost:8000${NC}"
-    (
-        cd "$BACKEND_DIR"
-        exec "$VENV_PYTHON" main_api.py
-    ) &
-    BACKEND_PID=$!
-
-    sleep 2
-    require_running "$BACKEND_PID" "FastAPI backend" "http://localhost:8000"
-fi
-
-# Frontend
-if port_is_in_use 3000; then
-    echo -e "${BLUE}React frontend already appears to be running on http://localhost:3000${NC}"
-    describe_port_usage 3000
-else
-    echo -e "${GREEN}Starting React frontend on http://localhost:3000${NC}"
-    (
-        cd "$FRONTEND_DIR"
-        exec npm run dev
-    ) &
-    FRONTEND_PID=$!
-
-    sleep 2
-    require_running "$FRONTEND_PID" "React frontend" "http://localhost:3000"
-fi
+sleep 2
+for pid in "${PIDS[@]}"; do kill -0 "$pid" 2>/dev/null || die "a service failed to start; see the logs above."; done
 
 echo ""
 echo "=========================="
-echo "Services are available!"
-echo ""
-echo "  Frontend : http://localhost:3000"
-echo "  Backend  : http://localhost:8000"
-echo "  API Docs : http://localhost:8000/docs"
-echo ""
-if [ -n "${BACKEND_PID:-}" ] || [ -n "${FRONTEND_PID:-}" ]; then
-    echo "Press Ctrl+C to stop the services started by this script"
-else
-    echo "Both services were already running, so nothing new was started"
-fi
+ok "  App      : http://localhost:$FRONTEND_PORT"
+echo "  API      : http://localhost:$BACKEND_PORT/api"
+echo "  API docs : http://localhost:$BACKEND_PORT/docs"
+echo "  Ctrl+C stops both"
 echo "=========================="
-echo ""
-
 wait
