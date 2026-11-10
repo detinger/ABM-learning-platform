@@ -38,7 +38,7 @@ The goal is **one service, same origin**: FastAPI serves the built SPA and also 
   - Node stage: `npm ci && npm run build`
   - Python slim stage: copy `frontend/dist`, install requirements, run `uvicorn backend.main_api:app --host 0.0.0.0 --port $PORT`
   - Add `.dockerignore` (`node_modules`, `.venv`, `dist`, `.git`) and `railway.json` (healthcheck path, restart policy).
-- **Trim `requirements.txt`.** `matplotlib`, `networkx`, `solara`, `aiofiles` and `python-multipart` are never imported; dropping them makes the image much smaller. Pin versions or add a lock file.
+- **Trim `requirements.txt`.** `matplotlib`, `solara`, `aiofiles` and `python-multipart` are never imported; dropping them makes the image much smaller (keep `networkx`: mesa imports it at startup). Pin versions or add a lock file.
 - **Run a single replica.** Simulation state lives in memory, so scaling out would break WebSocket sessions. Document this, and note that a redeploy loses running simulations (acceptable for a learning app).
 - **Local development:**
   - Keep `start.sh` (Vite on 3000 proxying to FastAPI on 8000) for hot reload.

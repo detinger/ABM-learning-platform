@@ -4,3 +4,5 @@ mesa==3.5.1
 fastapi==0.135.3
 uvicorn[standard]==0.44.0
 pydantic==2.12.5
+# Imported by mesa at startup but not declared as a mesa dependency.
+networkx==3.6.1
