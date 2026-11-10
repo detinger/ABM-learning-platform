@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { ArrowRight } from 'lucide-react';
+import { ArrowRight, GraduationCap, Trophy } from 'lucide-react';
 import { MODEL_CONFIGS, MODEL_ORDER, type ModelConfig } from '../models/configs';
 import { Link } from '../app/router';
 import ModelPreview from '../components/ModelPreview';
@@ -47,7 +47,7 @@ const ABOUT = [
   },
   {
     title: 'How to use this platform',
-    text: 'Open a model and read its rules, then select Run simulation. Use Step to advance one tick at a time. Change parameters and create a new simulation to compare outcomes.',
+    text: 'Open a model and read its rules, then select Run simulation. Use Step to advance one tick at a time. Change parameters and create a new simulation to compare outcomes, or follow the lessons for a guided tour.',
   },
 ];
 
@@ -68,6 +68,27 @@ const ModelLibrary: React.FC = () => {
           </p>
         </div>
       </header>
+
+      <section className="learn-banner" aria-labelledby="learn-banner-title">
+        <div className="learn-banner-icon" aria-hidden>
+          <GraduationCap size={22} />
+        </div>
+        <div className="min-w-0 flex-1">
+          <h2 id="learn-banner-title">New to agent-based modeling?</h2>
+          <p>
+            Follow eight short, illustrated lessons with live simulations and questions, then test yourself with twelve
+            challenges.
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Link to="/learn" className="btn btn-primary">
+            Start learning <ArrowRight size={16} aria-hidden />
+          </Link>
+          <Link to="/challenges" className="btn">
+            <Trophy size={16} aria-hidden /> Challenges
+          </Link>
+        </div>
+      </section>
 
       <section aria-label="Models" className="collection">
         {MODEL_ORDER.map((id) => (

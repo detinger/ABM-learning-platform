@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Code, Download, Grid3x3, LineChart, Table2 } from 'lucide-react';
+import { ArrowRight, BookOpen, CheckCircle2, Code, Download, Grid3x3, LineChart, Table2, Target } from 'lucide-react';
 import { useSimulation } from '../hooks/useSimulation';
 import SimulationCanvas from '../components/SimulationCanvas';
 import PopulationChart from '../components/PopulationChart';
@@ -11,6 +11,10 @@ import { Callout, Card, EmptyState, TabPanel, Tabs } from '../components/ui';
 import { modelTokens, transformParams, type CountDisplay, type ModelConfig } from '../models/configs';
 import { generateCode } from '../models/codeGenerators';
 import { useTokens } from '../app/theme';
+import { Link } from '../app/router';
+import { challengesForModel } from '../learn/challenges';
+import { LESSONS } from '../learn/lessons';
+import { useProgress } from '../learn/progress';
 
 function formatCount(value: number | undefined, format: CountDisplay['format']) {
   if (typeof value !== 'number') return '—';
@@ -82,6 +86,9 @@ const SimulationPage: React.FC<{ config: ModelConfig }> = ({ config }) => {
   const code = useMemo(() => generateCode(config.id, transformParams(config.id, params)), [config.id, params]);
   const Icon = config.icon;
   const counts = sim.gridState?.counts ?? {};
+  const progress = useProgress();
+  const lessons = LESSONS.filter((l) => l.model === config.id);
+  const challenges = challengesForModel(config.id);
 
   return (
     <div className="page">
@@ -148,6 +155,44 @@ const SimulationPage: React.FC<{ config: ModelConfig }> = ({ config }) => {
               ))}
             </div>
           </Card>
+          {(lessons.length > 0 || challenges.length > 0) && (
+            <Card title="Learn and practice">
+              <ul className="practice-list">
+                {lessons.map((l) => (
+                  <li key={l.id}>
+                    <Link to={`/learn/${l.id}`} className="practice-link">
+                      <BookOpen size={16} className="text-primary" aria-hidden />
+                      <span className="min-w-0 flex-1">
+                        <span className="block font-semibold">{l.title}</span>
+                        <span className="block text-[12px] text-subtle">Lesson · {l.minutes} min</span>
+                      </span>
+                      {progress.lessons[l.id]?.completed ? (
+                        <CheckCircle2 size={16} className="text-[var(--success)]" aria-label="Completed" />
+                      ) : (
+                        <ArrowRight size={14} aria-hidden />
+                      )}
+                    </Link>
+                  </li>
+                ))}
+                {challenges.map((c) => (
+                  <li key={c.id}>
+                    <Link to={`/challenges/${c.id}`} className="practice-link">
+                      <Target size={16} className="text-accent" aria-hidden />
+                      <span className="min-w-0 flex-1">
+                        <span className="block font-semibold">{c.title}</span>
+                        <span className="block text-[12px] text-subtle">{c.level} challenge</span>
+                      </span>
+                      {progress.challenges[c.id]?.passed ? (
+                        <CheckCircle2 size={16} className="text-[var(--success)]" aria-label="Passed" />
+                      ) : (
+                        <ArrowRight size={14} aria-hidden />
+                      )}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </Card>
+          )}
         </div>
 
         <div className="stack">

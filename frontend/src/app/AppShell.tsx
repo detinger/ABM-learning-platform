@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { BookOpen, LayoutGrid, Moon, PanelLeftClose, PanelLeftOpen, Sun } from 'lucide-react';
+import { BookOpen, GraduationCap, LayoutGrid, Moon, PanelLeftClose, PanelLeftOpen, Sun, Trophy } from 'lucide-react';
 import { MODEL_CONFIGS, MODEL_ORDER } from '../models/configs';
 import { Link, type Route } from './router';
 import { useTheme } from './theme';
@@ -59,6 +59,27 @@ const AppShell: React.FC<{ route: Route; children: React.ReactNode }> = ({ route
               >
                 <LayoutGrid size={18} />
                 <span className="nav-label">Model library</span>
+              </Link>
+            </div>
+            <div className="nav-group">
+              <div className="nav-group-label">Learn</div>
+              <Link
+                to="/learn"
+                className="nav-link"
+                aria-current={route.name === 'learn' || route.name === 'lesson' ? 'page' : undefined}
+                title={collapsed ? 'Lessons' : undefined}
+              >
+                <GraduationCap size={18} />
+                <span className="nav-label">Lessons</span>
+              </Link>
+              <Link
+                to="/challenges"
+                className="nav-link"
+                aria-current={route.name === 'challenges' || route.name === 'challenge' ? 'page' : undefined}
+                title={collapsed ? 'Challenges' : undefined}
+              >
+                <Trophy size={18} />
+                <span className="nav-label">Challenges</span>
               </Link>
             </div>
             <div className="nav-group">

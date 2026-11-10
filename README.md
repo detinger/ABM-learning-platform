@@ -13,6 +13,13 @@ An interactive learning platform for exploring **agent-based models (ABM)** in t
 | **Schelling Segregation** | Emergence, tipping points, micro-macro link |
 | **Wealth Distribution** | Sugarscape, Gini coefficient, resource competition |
 
+## Lessons and challenges
+
+- **Lessons** (`/learn`): eight illustrated lessons, from “what is an agent?” to replication and parameter sweeps. Each lesson has themed SVG figures, live simulations embedded in the text, predictions and graded questions.
+- **Challenges** (`/challenges`): twelve goal-based tasks, two per model, such as “keep the epidemic peak under 20%”. Some parameters are locked; the goals are checked live and the run is judged at a step limit. Every threshold was tested against the real models across 10 seeds.
+
+Progress is saved in the browser’s `localStorage` only, with no accounts and no backend changes. See [plan-lessons.md](plan-lessons.md) for the curriculum and the proposal for user-built models.
+
 ## Stack
 
 - Backend: Python 3.11+, Mesa 3, FastAPI, Uvicorn
@@ -90,8 +97,9 @@ ABM-learning-platform/
 │   │   ├── app/             # Shell, router, theme
 │   │   ├── components/      # UI primitives, canvas grid, chart, controls
 │   │   ├── hooks/           # useSimulation (REST + WebSocket)
+│   │   ├── learn/           # Lesson content, challenges, figures, progress store
 │   │   ├── models/          # Per-model UI config and Python code generators
-│   │   └── pages/           # Model library, simulation page
+│   │   └── pages/           # Library, simulation, lessons, challenges
 │   └── vite.config.ts       # Dev server on :3000 with API/WS proxy
 ├── Dockerfile, railway.json # Deployment
 ├── start.sh                 # Local runner (dev and --prod)
@@ -158,6 +166,7 @@ The server replies with:
 3. Add `--sim-*` color tokens for its states to both theme blocks in `frontend/src/index.css` (see STYLE.md §9).
 4. Add a `ModelConfig` (icon, parameters, metrics, KPIs, agent styles, legend, preview) in `frontend/src/models/configs.ts` and the id to `MODEL_ORDER`.
 5. Optionally add a Colab code generator in `frontend/src/models/codeGenerators.ts`.
+6. Optionally add a lesson in `frontend/src/learn/lessons.ts` and challenges in `frontend/src/learn/challenges.ts`. Before you publish a challenge threshold, check it across several seeds: the defaults should fail and a reachable setting should pass.
 
 ## Model parameter reference
 

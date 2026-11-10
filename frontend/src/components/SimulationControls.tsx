@@ -111,7 +111,7 @@ export const RunControls: React.FC<{
 
 // ─────────────────────────── Parameters ───────────────────────────
 
-const ParamField: React.FC<{
+export const ParamField: React.FC<{
   pc: ParamConfig;
   value: number;
   modified: boolean;
@@ -167,7 +167,8 @@ export const ParametersCard: React.FC<{
   onCreate: () => void;
   onRestoreDefaults: () => void;
   busy: boolean;
-}> = ({ config, params, applied, seed, onSeedChange, onChange, onLiveChange, onCreate, onRestoreDefaults, busy }) => {
+  subtitle?: string;
+}> = ({ config, params, applied, seed, onSeedChange, onChange, onLiveChange, onCreate, onRestoreDefaults, busy, subtitle }) => {
   const seedId = useId();
   const pendingLive = useRef<Record<string, number>>({});
   const timer = useRef<number>();
@@ -192,7 +193,7 @@ export const ParametersCard: React.FC<{
   return (
     <Card
       title="Parameters"
-      subtitle="Live parameters apply immediately. The others take effect when you create a new simulation."
+      subtitle={subtitle ?? 'Live parameters apply immediately. The others take effect when you create a new simulation.'}
       actions={
         <button type="button" className="btn btn-ghost btn-sm" onClick={onRestoreDefaults} title="Restore default values">
           <RefreshCw size={14} /> Defaults

@@ -32,7 +32,7 @@ function pick(weights: [string, number][], r: number) {
 }
 
 /** Decorative, deterministic preview of a model's grid for library cards. */
-const ModelPreview: React.FC<{ config: ModelConfig }> = ({ config }) => {
+const ModelPreview: React.FC<{ config: ModelConfig; variant?: string }> = ({ config, variant = '' }) => {
   const ref = useRef<HTMLCanvasElement>(null);
   const names = useMemo(
     () => [...new Set([...config.preview.background, ...config.preview.dots].map(([t]) => t).concat('canvas-bg'))],
@@ -49,7 +49,7 @@ const ModelPreview: React.FC<{ config: ModelConfig }> = ({ config }) => {
     canvas.width = COLS * cell * dpr;
     canvas.height = ROWS * cell * dpr;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    const rand = mulberry32(hash(config.id));
+    const rand = mulberry32(hash(config.id + variant));
     const { background, dots } = config.preview;
 
     for (let y = 0; y < ROWS; y++) {
@@ -66,7 +66,7 @@ const ModelPreview: React.FC<{ config: ModelConfig }> = ({ config }) => {
         }
       }
     }
-  }, [config, colors]);
+  }, [config, colors, variant]);
 
   return <canvas ref={ref} aria-hidden className="block h-full w-full" style={{ objectFit: 'cover' }} />;
 };

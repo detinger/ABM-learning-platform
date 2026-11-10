@@ -4,15 +4,32 @@ import React, { useEffect, useState } from 'react';
  * Minimal history-API router. Routes:
  *   /                 model library
  *   /models/:id       simulation workspace
+ *   /learn            lessons
+ *   /learn/:id        one lesson
+ *   /challenges       challenges
+ *   /challenges/:id   one challenge
  * The backend serves index.html for unknown paths, so deep links work in production.
  */
-export type Route = { name: 'library' } | { name: 'model'; id: string } | { name: 'not_found'; path: string };
+export type Route =
+  | { name: 'library' }
+  | { name: 'model'; id: string }
+  | { name: 'learn' }
+  | { name: 'lesson'; id: string }
+  | { name: 'challenges' }
+  | { name: 'challenge'; id: string }
+  | { name: 'not_found'; path: string };
 
 export function parseRoute(pathname: string): Route {
   const path = pathname.replace(/\/+$/, '') || '/';
   if (path === '/' || path === '/app') return { name: 'library' };
   const match = path.match(/^\/models\/([a-z_]+)$/);
   if (match) return { name: 'model', id: match[1] };
+  if (path === '/learn') return { name: 'learn' };
+  if (path === '/challenges') return { name: 'challenges' };
+  const lesson = path.match(/^\/learn\/([a-z0-9-]+)$/);
+  if (lesson) return { name: 'lesson', id: lesson[1] };
+  const challenge = path.match(/^\/challenges\/([a-z0-9-]+)$/);
+  if (challenge) return { name: 'challenge', id: challenge[1] };
   return { name: 'not_found', path };
 }
 
